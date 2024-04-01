@@ -8,10 +8,13 @@ function App() {
   const [cameraActive, setCameraActive] = useState(false);
   const containerRef = useRef(null);
   const videoRef = useRef(null);
-  const canvasRef = useRef(null); // Declare canvasRef here
+  const canvasRef = useRef(null);
+  const [fps, setFps] = useState(0);
+  // Correctly define lastFrameTime with useRef here
+  const lastFrameTime = useRef(Date.now());
+
 
   useEffect(() => {
-    let camera;
     const pose = new Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
     });
@@ -23,17 +26,25 @@ function App() {
       minTrackingConfidence: 0.5,
     });
 
+    let camera;
+
     pose.onResults((results) => {
-      // drawing 
+      const now = Date.now();
+      const elapsed = now - lastFrameTime.current;
+
+      if (elapsed > 0) { // Avoid division by zero
+        setFps(Math.round(1000 / elapsed));
+      }
+      lastFrameTime.current = now;
+
+      // drawing logic
       if (canvasRef.current && videoRef.current && results.poseLandmarks) {
         const canvasCtx = canvasRef.current.getContext('2d');
         canvasRef.current.width = videoRef.current.videoWidth;
         canvasRef.current.height = videoRef.current.videoHeight;
 
         canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        // drawing key points
         drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#1F51FF', fillColor: '#D3D3D3', lineWidth: 2, radius: 5 });
-        canvasCtx.restore();
       }
     });
 
@@ -42,19 +53,20 @@ function App() {
         onFrame: async () => {
           await pose.send({ image: videoRef.current });
         },
-        width: 1280,
-        height: 720
+        width: 640,
+        height: 360,
       });
       camera.start();
     }
 
     return () => {
       if (camera) {
-        camera.stop(); // Stop the camera when the component unmounts or camera is turned off
+        camera.stop();
       }
-      pose.close(); // Close the pose model to clean up resources
+      pose.close();
     };
   }, [cameraActive]);
+
 
 
 
@@ -90,7 +102,7 @@ function App() {
         navigator.mediaDevices.getUserMedia({
           video: {
             aspectRatio: 16 / 9,
-            width: { ideal: 1280 },
+            width: { ideal: 640 },
             frameRate: { ideal: 60 },
           }
         })
@@ -137,7 +149,7 @@ function App() {
           <button onClick={toggleCamera}>
             {cameraActive ? 'Turn Off Camera' : 'Turn On Camera'}
           </button>
-
+          <span className="fps-display">FPS: {fps}</span> {/* Display FPS here */}
         </div>
 
         {/* Video and Canvas Container */}
