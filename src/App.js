@@ -8,7 +8,10 @@ function App() {
   const [cameraActive, setCameraActive] = useState(false);
   const containerRef = useRef(null);
   const videoRef = useRef(null);
-  const canvasRef = useRef(null); // Declare canvasRef here
+  const canvasRef = useRef(null);
+  const fpsRef = useRef(null);
+  const lastFrameTimeRef = useRef(Date.now());
+  const frameCountRef = useRef(0);
 
   useEffect(() => {
     let camera;
@@ -24,23 +27,34 @@ function App() {
     });
 
     pose.onResults((results) => {
-      // drawing 
       if (canvasRef.current && videoRef.current && results.poseLandmarks) {
         const canvasCtx = canvasRef.current.getContext('2d');
         canvasRef.current.width = videoRef.current.videoWidth;
         canvasRef.current.height = videoRef.current.videoHeight;
-
         canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        // drawing key points
         drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#1F51FF', fillColor: '#D3D3D3', lineWidth: 2, radius: 5 });
-        canvasCtx.restore();
+
+        // Update FPS counter
+        const now = Date.now();
+        frameCountRef.current++;
+        if (now - lastFrameTimeRef.current >= 1000) {
+          const fps = frameCountRef.current / ((now - lastFrameTimeRef.current) / 1000);
+          if (fpsRef.current) {
+            fpsRef.current.textContent = `FPS: ${fps.toFixed(2)}`;
+          }
+          lastFrameTimeRef.current = now;
+          frameCountRef.current = 0;
+        }
       }
     });
 
     if (cameraActive && videoRef.current) {
       camera = new Camera(videoRef.current, {
         onFrame: async () => {
-          await pose.send({ image: videoRef.current });
+          // Process the frame multiple times for stress testing
+          for (let i = 0; i < 3; i++) {
+            await pose.send({ image: videoRef.current });
+          }
         },
         width: 1280,
         height: 720
@@ -50,103 +64,30 @@ function App() {
 
     return () => {
       if (camera) {
-        camera.stop(); // Stop the camera when the component unmounts or camera is turned off
+        camera.stop();
       }
-      pose.close(); // Close the pose model to clean up resources
+      pose.close();
     };
   }, [cameraActive]);
-
-
 
   const toggleCamera = useCallback(() => {
-    if (cameraActive) {
-      // Turning the camera off
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject;
-        const tracks = stream.getTracks();
-
-        tracks.forEach((track) => {
-          track.stop(); // This line stops each track
-        });
-
-        videoRef.current.srcObject = null; // Clear the srcObject to release the stream
-      }
-
-      // Exit fullscreen when turning the camera off
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(err => {
-          console.error(`Error attempting to disable full-screen mode: ${err.message} (${err.name})`);
-        });
-      }
-    } else {
-      // Attempt to enter full-screen and start camera stream
-      if (containerRef.current) {
-        containerRef.current.requestFullscreen().catch(err => {
-          console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-        });
-      }
-
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({
-          video: {
-            aspectRatio: 16 / 9,
-            width: { ideal: 1280 },
-            frameRate: { ideal: 60 },
-          }
-        })
-          .then(stream => {
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-              // Access the video track's settings to log the frame rate
-              const videoTrack = stream.getVideoTracks()[0]; // Assuming you're interested in the first video track
-              const trackSettings = videoTrack.getSettings();
-              console.log(`Actual frame rate: ${trackSettings.frameRate}`);
-            }
-          })
-          .catch(err => {
-            console.error(`Error accessing the camera: ${err}`);
-          });
-      }
-    }
-
-    setCameraActive(!cameraActive);
-  }, [cameraActive]);
-
-  // Add an effect to listen for fullscreen changes
-  useEffect(() => {
-    function handleFullscreenChange() {
-      if (!document.fullscreenElement && cameraActive) {
-        toggleCamera(); // Toggle camera off when exiting fullscreen
-      }
-    }
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-
-    // Cleanup the event listener on component unmount
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
-  }, [cameraActive, toggleCamera]);
-
+    setCameraActive(active => !active);
+  }, []);
 
   return (
     <div className="App" ref={containerRef}>
       <div className="fullscreen-container">
-        {/* Navbar section */}
         <div className="navbar">
           <button onClick={toggleCamera}>
             {cameraActive ? 'Turn Off Camera' : 'Turn On Camera'}
           </button>
-
         </div>
-
-        {/* Video and Canvas Container */}
         <div className="video-container">
           {cameraActive && (
             <>
-              <video ref={videoRef} className="input-video" autoPlay playsInline muted ></video>
+              <video ref={videoRef} className="input-video" autoPlay playsInline muted></video>
               <canvas ref={canvasRef} className="output-canvas"></canvas>
-
+              <div ref={fpsRef} className="fps-counter">FPS: 0</div>
             </>
           )}
         </div>
