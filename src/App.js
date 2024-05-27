@@ -14,7 +14,6 @@ function App() {
   const frameCountRef = useRef(0);
 
   useEffect(() => {
-    let camera;
     const pose = new Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
     });
@@ -25,6 +24,8 @@ function App() {
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5,
     });
+
+    let camera;
 
     pose.onResults((results) => {
       if (canvasRef.current && videoRef.current && results.poseLandmarks) {
@@ -56,8 +57,8 @@ function App() {
             await pose.send({ image: videoRef.current });
           }
         },
-        width: 1280,
-        height: 720
+        width: 640,
+        height: 360,
       });
       camera.start();
     }
@@ -65,7 +66,9 @@ function App() {
     return () => {
       if (camera) {
         camera.stop();
+        camera.stop();
       }
+      pose.close();
       pose.close();
     };
   }, [cameraActive]);
